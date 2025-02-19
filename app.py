@@ -18,14 +18,14 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 @app.route("/", methods=["GET"])
 def home():
-    return "LINE Bot is running!"
+    return "LINE Bot NOW is running!"
 
-@app.route("/callback", methods=['POST'])
-def callback():
-    # 確認請求來自LINE平台
-    signature = request.headers['X-Line-Signature']
+@app.route("/webhook", methods=["POST"])  # ✅ Ensure it's POST
+def webhook():
+    signature = request.headers.get("X-Line-Signature")
+    if not signature:
+        abort(400)
 
-    # 取得請求內容
     body = request.get_data(as_text=True)
 
     try:
@@ -33,13 +33,13 @@ def callback():
     except InvalidSignatureError:
         abort(400)
 
-    return 'OK'
+    return "OK", 200  # ✅ Must return 200
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=event.message.text))
+    user_message = event.message.text
+    reply_text = f"You said: {user_message}"
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=5000)  # ✅ Ensure it binds to 0.0.0.0
