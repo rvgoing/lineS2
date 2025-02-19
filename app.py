@@ -20,17 +20,18 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 def home():
     return "LINE Bot is running!"
 
-@app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["POST"])  # ✅ Must allow POST requests
 def webhook():
-    signature = request.headers["X-Line-Signature"]
+    signature = request.headers.get("X-Line-Signature")
     body = request.get_data(as_text=True)
 
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
-        abort(400)
+        abort(400)  # Return 400 if signature is invalid
 
-    return "OK"
+    return "OK", 200  # ✅ Must return status 200
+
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
