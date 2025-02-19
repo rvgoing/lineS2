@@ -20,7 +20,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 def home():
     return "LINE Bot is running!", 200  # ✅ Ensure it returns 200
 
-@app.route("/webhook", methods=["POST"])  # ✅ Ensure it accepts POST
+@app.route("/callback", methods=["POST"])  # ✅ Ensure it accepts POST
 def webhook():
     signature = request.headers.get("X-Line-Signature")
     if not signature:
