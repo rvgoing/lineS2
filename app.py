@@ -27,8 +27,8 @@ os.makedirs(STATIC_FOLDER, exist_ok=True)
 def home():
     return "LINE Bot is running!", 200  # Ensure it returns 200
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
+@app.route("/callback", methods=["POST"])
+def callback():
     signature = request.headers.get("X-Line-Signature")
     if not signature:
         abort(400)
