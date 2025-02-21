@@ -35,6 +35,36 @@ def webhook():
 
     return "OK", 200  # ✅ Must return 200 to LINE
 
+
+# ✅ Serve images from /static/
+@app.route("/static/<filename>")
+def serve_image(filename):
+    return send_from_directory(STATIC_FOLDER, filename)
+
+# ✅ Handle Image Messages
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image_message(event):
+    message_id = event.message.id
+
+    # 🔹 Get image from LINE's server
+    message_content = line_bot_api.get_message_content(message_id)
+
+    # 🔹 Save the image in the "static/" directory
+    image_path = f"{STATIC_FOLDER}/{message_id}.jpg"
+    with open(image_path, "wb") as img_file:
+        for chunk in message_content.iter_content():
+            img_file.write(chunk)
+
+    # 🔹 Generate a public URL for the image
+    image_url = f"https://your-app-name.onrender.com/static/{message_id}.jpg"
+
+    # 🔹 Send the image back
+    line_bot_api.reply_message(
+        event.reply_token,
+        ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
+    )
+
+
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
     user_message = event.message.text
