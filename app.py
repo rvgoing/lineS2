@@ -18,6 +18,10 @@ LINE_CHANNEL_SECRET = "6262aa5eb114fbd6916ed6fa7e78d18b"
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# ✅ Ensure "static" folder exists for storing images
+STATIC_FOLDER = "static"
+os.makedirs(STATIC_FOLDER, exist_ok=True)
+
 @app.route("/", methods=["GET"])
 def home():
     return "LINE Bot is running!", 200  # ✅ Ensure it returns 200
