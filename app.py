@@ -1,5 +1,8 @@
 import os
-from flask import Flask, request, send_from_directory
+import base64
+from flask import Flask, request, send_file
+from flask_sqlalchemy import SQLAlchemy
+from io import BytesIO
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage
@@ -16,13 +19,30 @@ LINE_CHANNEL_SECRET = "6262aa5eb114fbd6916ed6fa7e78d18b"
 line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
+# ===================================
+# PostgreSQL process
+# ===================================
 
-# Folder for saving images
-UPLOAD_FOLDER = "static/uploads"
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# PostgreSQL Database Config (Render)
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@hostname:port/database")
+app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
+db = SQLAlchemy(app)
 
+# Database Model for Images
+class LineImage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    message_id = db.Column(db.String(50), unique=True, nullable=False)
+    image_data = db.Column(db.LargeBinary, nullable=False)  # Store image as binary
+
+    def __init__(self, message_id, image_data):
+        self.message_id = message_id
+        self.image_data = image_data
+        
+# ===================================
+# main Linbot Test process
+# ===================================
 @app.route("/", methods=["GET"])
 def home():
     return "LINE Bot is running!", 200  # Ensure it returns 200
@@ -41,7 +61,10 @@ def callback():
         abort(400)
 
     return "OK", 200
-
+    
+# ===================================
+# Handle process
+# ===================================
 # ✅ Handle Text Messages
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
@@ -49,34 +72,49 @@ def handle_text_message(event):
     reply_text = f"You said: {user_message}"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-# Handle image messages (Save & Reply with the Image)
+# Handle image messages
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image_message(event):
     message_id = event.message.id
 
     # Get image from Line API
     image_content = line_bot_api.get_message_content(message_id)
-    file_path = os.path.join(app.config["UPLOAD_FOLDER"], f"{message_id}.jpg")
+    image_binary = b"".join(chunk for chunk in image_content.iter_content())
 
-    # Save image to static/uploads/
-    with open(file_path, "wb") as f:
-        for chunk in image_content.iter_content():
-            f.write(chunk)
+    # Save image in PostgreSQL
+    new_image = LineImage(message_id=message_id, image_data=image_binary)
+    db.session.add(new_image)
+    db.session.commit()
 
-    # Generate Image URL
-    image_url = f"{request.host_url}uploads/{message_id}.jpg"
+    # Generate image URL
+    image_url = f"{request.host_url}get_image/{message_id}"
 
-    # Reply with the uploaded image
+    # Reply with the stored image
     line_bot_api.reply_message(event.reply_token, ImageSendMessage(
         original_content_url=image_url,
         preview_image_url=image_url
     ))
 
-# Route to serve images
-@app.route("/uploads/<filename>")
-def uploaded_file(filename):
-    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+# Route to serve images from PostgreSQL
+@app.route("/get_image/<message_id>")
+def get_image(message_id):
+    image_record = LineImage.query.filter_by(message_id=message_id).first()
 
+    if image_record:
+        return send_file(
+            BytesIO(image_record.image_data),
+            mimetype="image/jpeg",
+            as_attachment=False
+        )
+    else:
+        return "Image not found", 404
 
+# ===================================
+# RUN FLASK process
+# ===================================
+
+# Run Flask App
 if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()  # Ensure database tables exist
     app.run(host="0.0.0.0", port=5000)
