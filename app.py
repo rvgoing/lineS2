@@ -1,10 +1,8 @@
-from flask import Flask, request, abort, send_from_directory
+import os
+from flask import Flask, request, send_from_directory
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import (
-    MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage
-)
-import os
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage
 
 app = Flask(__name__)
 
@@ -19,9 +17,11 @@ line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 
-# ✅ Ensure "static" folder exists
-STATIC_FOLDER = "static"
-os.makedirs(STATIC_FOLDER, exist_ok=True)
+# Folder for saving images
+UPLOAD_FOLDER = "static/uploads"
+app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 
 @app.route("/", methods=["GET"])
 def home():
@@ -42,11 +42,6 @@ def callback():
 
     return "OK", 200
 
-# ✅ Serve images from the "static" folder
-@app.route("/static/<path:filename>")
-def serve_static(filename):
-    return send_from_directory(STATIC_FOLDER, filename)
-
 # ✅ Handle Text Messages
 @handler.add(MessageEvent, message=TextMessage)
 def handle_text_message(event):
@@ -54,32 +49,34 @@ def handle_text_message(event):
     reply_text = f"You said: {user_message}"
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
 
-# ✅ Handle Image Messages
+# Handle image messages (Save & Reply with the Image)
 @handler.add(MessageEvent, message=ImageMessage)
 def handle_image_message(event):
     message_id = event.message.id
 
-    # 🔹 Get image from LINE's server
-    message_content = line_bot_api.get_message_content(message_id)
+    # Get image from Line API
+    image_content = line_bot_api.get_message_content(message_id)
+    file_path = os.path.join(app.config["UPLOAD_FOLDER"], f"{message_id}.jpg")
 
-    # 🔹 Save the image in the "static/" directory
-    image_path = os.path.join(STATIC_FOLDER, f"{message_id}.jpg")
-    with open(image_path, "wb") as img_file:
-        for chunk in message_content.iter_content():
-            img_file.write(chunk)
+    # Save image to static/uploads/
+    with open(file_path, "wb") as f:
+        for chunk in image_content.iter_content():
+            f.write(chunk)
 
-    # 🔹 Generate a public URL for the image
-    render_app_url = "https://your-app-name.onrender.com"  # Change to your Render URL
-    image_url = f"{render_app_url}/static/{message_id}.jpg"
+    # Generate Image URL
+    image_url = f"{request.host_url}uploads/{message_id}.jpg"
 
-    # 🔹 Debug: Print URL in logs
-    print("Sending image:", image_url)
+    # Reply with the uploaded image
+    line_bot_api.reply_message(event.reply_token, ImageSendMessage(
+        original_content_url=image_url,
+        preview_image_url=image_url
+    ))
 
-    # 🔹 Send the image back
-    line_bot_api.reply_message(
-        event.reply_token,
-        ImageSendMessage(original_content_url=image_url, preview_image_url=image_url)
-    )
+# Route to serve images
+@app.route("/uploads/<filename>")
+def uploaded_file(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
