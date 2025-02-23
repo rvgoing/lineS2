@@ -33,7 +33,11 @@ class ChatHistory(db.Model):
     user_id = db.Column(db.String(50), nullable=False)
     user_message = db.Column(db.String(500), nullable=False)
     bot_response = db.Column(db.String(500), nullable=False)
-        
+
+# ✅ Ensure database tables are created
+with app.app_context():
+    db.create_all()
+
 # ===================================
 # main Linbot Test process
 # ===================================
