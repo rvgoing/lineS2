@@ -84,8 +84,25 @@ def handle_message(event):
 # Route to get chat history
 @app.route("/history", methods=["GET"])
 def get_history():
-    chats = ChatHistory.query.all()
-    return jsonify([{"id": c.id, "user_id": c.user_id, "user_message": c.user_message, "bot_response": c.bot_response} for c in chats])
+    try:
+        # Query all chat history from PostgreSQL
+        chats = ChatHistory.query.all()
+        
+        # Convert the chat records into a JSON response
+        history = [
+            {
+                "id": chat.id,
+                "user_id": chat.user_id,
+                "user_message": chat.user_message,
+                "bot_response": chat.bot_response
+            }
+            for chat in chats
+        ]
+
+        return jsonify(history), 200  # Return JSON response with HTTP 200 (OK)
+    
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500  # Return error message if something goes wrong
 
 if __name__ == "__main__":
     app.run(debug=True)
