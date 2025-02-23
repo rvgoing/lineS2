@@ -3,3 +3,4 @@ gunicorn
 line-bot-sdk
 flask_sqlalchemy
 psycopg2-binary
+flask-migrate
