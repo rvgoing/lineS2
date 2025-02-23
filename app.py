@@ -2,6 +2,7 @@ import os
 import base64
 from flask import Flask, request, send_file
 from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate  # Import Flask-Migrate
 from io import BytesIO
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -29,6 +30,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)  # Initialize Flask-Migrate
 
 # Database Model for Images
 class LineImage(db.Model):
@@ -109,12 +111,6 @@ def get_image(message_id):
     else:
         return "Image not found", 404
 
-# ===================================
-# RUN FLASK process
-# ===================================
-
 # Run Flask App
 if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()  # Ensure database tables exist
     app.run(host="0.0.0.0", port=5000)
