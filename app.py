@@ -2,7 +2,7 @@ import os
 import base64
 from flask import Flask, request, send_file
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate  # Import Flask-Migrate
+from flask_migrate import Migrate, upgrade  # Import Flask-Migrate
 from io import BytesIO
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -23,6 +23,10 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # ===================================
 # PostgreSQL process
 # ===================================
+
+# Apply database migrations automatically
+with app.app_context():
+    upgrade()
 
 # PostgreSQL Database Config (Render)
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://linebots1_user:x5XSGS3mtdDq2urm52I2kwHksHdhsVYM@dpg-cusib1vnoe9s738vfsl0-a/linebots1")
