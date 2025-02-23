@@ -1,12 +1,9 @@
-import os
-import base64
-from flask import Flask, request, send_file
+from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate, upgrade  # Import Flask-Migrate
-from io import BytesIO
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage, ImageSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage
+import os
 
 app = Flask(__name__)
 
@@ -24,29 +21,18 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 # PostgreSQL process
 # ===================================
 
-# Apply database migrations automatically
-with app.app_context():
-    upgrade()
-
-# PostgreSQL Database Config (Render)
-# DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://linebots1_user:x5XSGS3mtdDq2urm52I2kwHksHdhsVYM@dpg-cusib1vnoe9s738vfsl0-a/linebots1")
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://linebots1_user:x5XSGS3mtdDq2urm52I2kwHksHdhsVYM@dpg-cusib1vnoe9s738vfsl0-a.oregon-postgres.render.com/linebots1")
-
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+# Configure PostgreSQL (Replace with your Render database URL)
+app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "postgresql://linebots1_user:x5XSGS3mtdDq2urm52I2kwHksHdhsVYM@dpg-cusib1vnoe9s738vfsl0-a/linebots1")
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)  # Initialize Flask-Migrate
 
-# Database Model for Images
-class LineImage(db.Model):
+# Define a model for storing chat history
+class ChatHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    message_id = db.Column(db.String(50), unique=True, nullable=False)
-    image_data = db.Column(db.LargeBinary, nullable=False)  # Store image as binary
-
-    def __init__(self, message_id, image_data):
-        self.message_id = message_id
-        self.image_data = image_data
+    user_id = db.Column(db.String(50), nullable=False)
+    user_message = db.Column(db.String(500), nullable=False)
+    bot_response = db.Column(db.String(500), nullable=False)
         
 # ===================================
 # main Linbot Test process
@@ -74,49 +60,28 @@ def callback():
 # Handle process
 # ===================================
 # ✅ Handle Text Messages
+# Handle text messages from users
 @handler.add(MessageEvent, message=TextMessage)
-def handle_text_message(event):
+def handle_message(event):
     user_message = event.message.text
-    reply_text = f"You said: {user_message}"
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply_text))
+    user_id = event.source.user_id
 
-# Handle image messages
-@handler.add(MessageEvent, message=ImageMessage)
-def handle_image_message(event):
-    message_id = event.message.id
+    # Simple bot response logic
+    bot_response = f"You said: {user_message}"
 
-    # Get image from Line API
-    image_content = line_bot_api.get_message_content(message_id)
-    image_binary = b"".join(chunk for chunk in image_content.iter_content())
-
-    # Save image in PostgreSQL
-    new_image = LineImage(message_id=message_id, image_data=image_binary)
-    db.session.add(new_image)
+    # Save to database
+    chat = ChatHistory(user_id=user_id, user_message=user_message, bot_response=bot_response)
+    db.session.add(chat)
     db.session.commit()
 
-    # Generate image URL
-    image_url = f"{request.host_url}get_image/{message_id}"
+    # Reply to user
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=bot_response))
 
-    # Reply with the stored image
-    line_bot_api.reply_message(event.reply_token, ImageSendMessage(
-        original_content_url=image_url,
-        preview_image_url=image_url
-    ))
+# Route to get chat history
+@app.route("/history", methods=["GET"])
+def get_history():
+    chats = ChatHistory.query.all()
+    return jsonify([{"id": c.id, "user_id": c.user_id, "user_message": c.user_message, "bot_response": c.bot_response} for c in chats])
 
-# Route to serve images from PostgreSQL
-@app.route("/get_image/<message_id>")
-def get_image(message_id):
-    image_record = LineImage.query.filter_by(message_id=message_id).first()
-
-    if image_record:
-        return send_file(
-            BytesIO(image_record.image_data),
-            mimetype="image/jpeg",
-            as_attachment=False
-        )
-    else:
-        return "Image not found", 404
-
-# Run Flask App
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(debug=True)
