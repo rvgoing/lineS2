@@ -2,6 +2,7 @@ import os
 from flask import Flask, request, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError  # ✅ Import this
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from werkzeug.utils import secure_filename
 
