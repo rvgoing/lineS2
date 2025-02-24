@@ -22,7 +22,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv("DATABASE_URL", "postgresql://linebots1_user:x5XSGS3mtdDq2urm52I2kwHksHdhsVYM@dpg-cusib1vnoe9s738vfsl0-a/linebots1")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-
+db = SQLAlchemy(app)
 
 # Define ChatHistory Model
 class ChatHistory(db.Model):
@@ -33,7 +33,7 @@ class ChatHistory(db.Model):
     image_data = db.Column(db.LargeBinary, nullable=True)  # Store image binary data
     image_type = db.Column(db.String(50), nullable=True)  # Store file type
 
-# with app.app_context():
+with app.app_context():
     db.create_all()
 
 
