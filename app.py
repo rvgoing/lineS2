@@ -1,9 +1,10 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import MessageEvent, TextMessage, TextSendMessage, ImageMessage
 import os
+import io
 
 app = Flask(__name__)
 
@@ -27,12 +28,20 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Define a model for storing chat history
+# ===================================
+# Database Model
+# ===================================
 class ChatHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String(50), nullable=False)
     user_message = db.Column(db.String(500), nullable=False)
     bot_response = db.Column(db.String(500), nullable=False)
+
+class ImageStorage(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.String(50), nullable=False)
+    image_data = db.Column(db.LargeBinary, nullable=False)  # ✅ Store images in BYTEA format
+    filename = db.Column(db.String(255), nullable=False)
 
 # ✅ Ensure database tables are created
 with app.app_context():
@@ -61,50 +70,72 @@ def callback():
     return "OK", 200
 
 # ===================================
-# Handle process
+# Handle Image Messages
 # ===================================
-# ✅ Handle Text Messages
-# Handle text messages from users
-@handler.add(MessageEvent, message=TextMessage)
-def handle_message(event):
-    user_message = event.message.text
+@handler.add(MessageEvent, message=ImageMessage)
+def handle_image(event):
     user_id = event.source.user_id
+    message_id = event.message.id
 
-    # Simple bot response logic
-    bot_response = f"You said: {user_message}"
+    # ✅ Get image content from LINE
+    image_content = line_bot_api.get_message_content(message_id)
+    image_data = image_content.content  # Read binary data
 
-    # Save to database
-    chat = ChatHistory(user_id=user_id, user_message=user_message, bot_response=bot_response)
-    db.session.add(chat)
+    # ✅ Save image to database
+    image = ImageStorage(user_id=user_id, image_data=image_data, filename=f"user_{user_id}.jpg")
+    db.session.add(image)
     db.session.commit()
 
-    # Reply to user
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=bot_response))
+    # Reply with confirmation
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text="✅ Image received & saved!"))
 
-# Route to get chat history
+# ===================================
+# Retrieve Image from Database
+# ===================================
+@app.route("/get_image/<int:image_id>", methods=["GET"])
+def get_image(image_id):
+    image = ImageStorage.query.get(image_id)
+    if not image:
+        return jsonify({"error": "Image not found"}), 404
+
+    return send_file(io.BytesIO(image.image_data), mimetype="image/jpeg")
+
+# ===================================
+# Upload Image via API
+# ===================================
+@app.route("/upload_image", methods=["POST"])
+def upload_image():
+    if "file" not in request.files:
+        return jsonify({"error": "No file part"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    # ✅ Save image to PostgreSQL
+    user_id = request.form.get("user_id", "unknown_user")
+    image_data = file.read()
+    
+    image = ImageStorage(user_id=user_id, image_data=image_data, filename=file.filename)
+    db.session.add(image)
+    db.session.commit()
+
+    return jsonify({"message": "Image uploaded successfully", "image_id": image.id})
+
+# ===================================
+# Get Chat History
+# ===================================
 @app.route("/history", methods=["GET"])
 def get_history():
-    chats = ChatHistory.query.all()
-    return jsonify([{"id": c.id, "user_id": c.user_id, "user_message": c.user_message, "bot_response": c.bot_response} for c in chats])
     try:
-        # Query all chat history from PostgreSQL
         chats = ChatHistory.query.all()
-        
-        # Convert the chat records into a JSON response
         history = [
-            {
-                "id": chat.id,
-                "user_id": chat.user_id,
-                "user_message": chat.user_message,
-                "bot_response": chat.bot_response
-            }
-            for chat in chats
+            {"id": c.id, "user_id": c.user_id, "user_message": c.user_message, "bot_response": c.bot_response}
+            for c in chats
         ]
-
-        return jsonify(history), 200  # Return JSON response with HTTP 200 (OK)
-    
+        return jsonify(history), 200
     except Exception as e:
-        return jsonify({"error": str(e)}), 500  # Return error message if something goes wrong
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
