@@ -1,9 +1,12 @@
+import os
 from flask import Flask, request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-import os
+from werkzeug.utils import secure_filename
+
+
 
 app = Flask(__name__)
 
@@ -27,12 +30,14 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
 
-# Define a model for storing chat history
+# Define ChatHistory Model
 class ChatHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.String(50), nullable=False)
-    user_message = db.Column(db.String(500), nullable=False)
-    bot_response = db.Column(db.String(500), nullable=False)
+    user_message = db.Column(db.String(500), nullable=True)
+    bot_response = db.Column(db.String(500), nullable=True)
+    image_data = db.Column(db.LargeBinary, nullable=True)  # Store image binary data
+    image_type = db.Column(db.String(50), nullable=True)  # Store file type
 
 # ✅ Ensure database tables are created
 with app.app_context():
@@ -80,6 +85,34 @@ def handle_message(event):
 
     # Reply to user
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=bot_response))
+
+# Upload Image to PostgreSQL
+@app.route("/upload_image", methods=["POST"])
+def upload_image():
+    if "image" not in request.files:
+        return jsonify({"error": "No image file found"}), 400
+
+    file = request.files["image"]
+    if file.filename == "":
+        return jsonify({"error": "No selected file"}), 400
+
+    new_chat = ChatHistory(
+        user_id="test_user",
+        image_data=file.read(),
+        image_type=file.content_type
+    )
+    db.session.add(new_chat)
+    db.session.commit()
+
+    return jsonify({"message": "Image uploaded successfully!", "chat_id": new_chat.id}), 201
+
+# Retrieve Image from PostgreSQL
+@app.route("/get_image/<int:chat_id>", methods=["GET"])
+def get_image(chat_id):
+    chat = ChatHistory.query.get(chat_id)
+    if chat and chat.image_data:
+        return Response(chat.image_data, mimetype=chat.image_type)
+    return jsonify({"error": "Image not found"}), 404
 
 # Route to get chat history
 @app.route("/history", methods=["GET"])
