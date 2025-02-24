@@ -33,7 +33,7 @@ class ChatHistory(db.Model):
     image_data = db.Column(db.LargeBinary, nullable=True)  # Store image binary data
     image_type = db.Column(db.String(50), nullable=True)  # Store file type
 
-with app.app_context():
+# with app.app_context():
     db.create_all()
 
 
