@@ -70,6 +70,25 @@ def callback():
     return "OK", 200
 
 # ===================================
+# Handle Text Messages
+# ===================================
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    user_message = event.message.text
+    user_id = event.source.user_id
+
+    bot_response = f"You said: {user_message}"
+
+    # Save to database
+    chat = ChatHistory(user_id=user_id, user_message=user_message, bot_response=bot_response)
+    db.session.add(chat)
+    db.session.commit()
+
+    # Reply to user
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=bot_response))
+
+
+# ===================================
 # Handle Image Messages
 # ===================================
 @handler.add(MessageEvent, message=ImageMessage)
